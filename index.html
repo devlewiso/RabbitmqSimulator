@@ -1,0 +1,694 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- METADATOS SEO OPTIMIZADOS -->
+    <title id="app-title">Simulador Interactivo de RabbitMQ (AMQP) vs. Kafka</title>
+    <meta name="description" content="Simulación interactiva para entender el flujo de mensajes en RabbitMQ (Exchange, Colas) en comparación con Kafka. Desarrollado por Iran Lewis de NeuralCodeLab.com.">
+    <meta name="keywords" content="RabbitMQ, AMQP, Kafka, Comparativa, Simulador, Tutorial, Colas de mensajes, Message Queue, Exchange, Routing Key, Microservicios, NeuralCodeLab, Iran Lewis">
+    <meta name="author" content="Iran Lewis (NeuralCodeLab.com)">
+    <meta name="publisher" content="NeuralCodeLab.com">
+    <meta name="language" content="Spanish, English, Portuguese">
+    <!-- Google tag (gtag.js) -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-1DMPKTVWND"></script>
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+
+      gtag('config', 'G-1DMPKTVWND');
+    </script>
+    <!-- FIN METADATOS SEO -->
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --color-producer: #10b981; /* Esmeralda 500 */
+            --color-exchange: #2563eb; /* Azul 700 */
+            --color-queue: #f59e0b; /* Ámbar 500 */
+            --color-consumer: #ef4444; /* Rojo 500 */
+            --color-explanation: #6366f1; /* Índigo 500 */
+            --color-message: #059669; /* Verde 600 */
+            --color-bg: #f8fafc; /* Slate 50 */
+        }
+        body { font-family: 'Inter', sans-serif; background-color: var(--color-bg); }
+
+        .concept-box {
+            border-radius: 1rem;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+            padding: 1.5rem;
+            transition: transform 0.3s ease;
+        }
+
+        .producer { border: 2px solid var(--color-producer); background-color: #ecfdf5; }
+        .exchange { border: 2px solid var(--color-exchange); background-color: #eff6ff; }
+        .queue { border: 2px solid var(--color-queue); background-color: #fffbeb; }
+        .consumer { border: 2px solid var(--color-consumer); background-color: #fee2e2; }
+        
+        .explanation-box {
+            border: 2px solid var(--color-explanation);
+            background-color: #eef2ff; /* Índigo 50 */
+            border-radius: 1rem;
+            padding: 1.5rem;
+            margin-top: 2rem;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+        }
+
+        .queue-list {
+            min-height: 150px;
+            overflow-y: auto;
+            border: 1px solid #e5e7eb;
+            background-color: #ffffff;
+            border-radius: 0.5rem;
+            padding: 0.5rem;
+            display: flex;
+            flex-direction: column-reverse; /* FIFO: El primer elemento (más viejo) está abajo */
+        }
+
+        .message-item {
+            padding: 0.5rem 0.5rem;
+            margin-bottom: 0.25rem;
+            background-color: var(--color-message); /* Verde 600 */
+            color: white;
+            border-radius: 0.5rem;
+            font-size: 0.875rem;
+            text-align: center;
+            opacity: 1;
+            transition: all 0.3s ease;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+
+        /* --- Animation Styles --- */
+        .message-animation {
+            position: fixed;
+            width: 30px;
+            height: 30px;
+            background-color: var(--color-message);
+            border-radius: 50%;
+            z-index: 1000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+            font-size: 0.75rem;
+            opacity: 0;
+            pointer-events: none;
+            transition: all 0.5s ease-in-out;
+        }
+
+        /* FOOTER de Atribución */
+        .app-footer {
+            background-color: #f1f5f9; /* Slate 100 */
+            color: #475569; /* Slate 600 */
+            padding: 1rem;
+            text-align: center;
+            font-size: 0.875rem;
+            margin-top: 4rem;
+            border-top: 1px solid #e2e8f0; /* Slate 200 */
+            border-radius: 0.5rem;
+        }
+        .app-footer strong {
+            color: #1e3a8a; /* Azul 800 */
+        }
+    </style>
+</head>
+<body class="p-4 md:p-8">
+
+    <header class="text-center mb-8">
+        <h1 id="header-title" class="text-4xl font-extrabold text-gray-800">Simulador Interactivo de RabbitMQ (AMQP)</h1>
+        <p id="header-subtitle" class="text-xl text-gray-600 mt-2">Visualiza el enrutamiento de mensajes a Colas.</p>
+        
+        <div class="mt-4 flex justify-center items-center">
+            <label for="language-select" class="text-gray-600 mr-2" id="lang-label">Idioma:</label>
+            <select id="language-select" onchange="setLanguage(this.value)" class="p-2 border rounded-lg shadow-sm">
+                <option value="es">Español</option>
+                <option value="en">English</option>
+                <option value="pt">Português</option>
+            </select>
+        </div>
+    </header>
+
+    <main class="space-y-8">
+        <!-- Flujo Principal: Productor -> Exchange -> Colas -->
+        <div class="lg:flex lg:space-x-8">
+
+            <!-- 1. PRODUCTOR -->
+            <div id="producer-box" class="concept-box producer lg:w-1/4 mb-8 lg:mb-0">
+                <h2 id="producer-title" class="text-2xl font-bold text-gray-900 flex items-center mb-4">
+                    <svg class="w-6 h-6 mr-2 text-green-700" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c1.657 0 3 .895 3 2s-1.343 2-3 2-3 .895-3 2 1.343 2 3 2m-3-2v4m-2-4h4m-2 4h4m-1.5 6h-3M12 6V4"></path></svg>
+                    1. Productor
+                </h2>
+                <p id="producer-desc" class="text-gray-700 mb-4">El productor envía un mensaje y especifica la **Routing Key**.</p>
+                
+                <input type="text" id="message-input" placeholder="Escribe tu mensaje..." class="w-full p-3 border border-gray-300 rounded-lg focus:ring-4 focus:ring-green-500/50 focus:border-green-500 mb-2">
+                
+                <select id="routing-key-select" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-4 focus:ring-green-500/50 focus:border-green-500 mb-4">
+                    <option value="orden.pago">orden.pago</option>
+                    <option value="orden.envio">orden.envio</option>
+                </select>
+                
+                <button id="send-button" onclick="sendMessage()" class="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-4 rounded-lg transition duration-200 shadow-md">
+                    Enviar Mensaje (Producir)
+                </button>
+            </div>
+
+            <!-- 2. EXCHANGE Y COLAS -->
+            <div id="exchange-box" class="concept-box exchange lg:w-3/4">
+                <h2 id="exchange-title" class="text-2xl font-bold text-gray-900 flex items-center mb-4">
+                    <svg class="w-6 h-6 mr-2 text-blue-800" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+                    2. Exchange (Tipo Direct)
+                </h2>
+                <p id="exchange-desc" class="text-gray-700 mb-6">El Exchange recibe el mensaje y lo enruta a la Cola cuya clave de *binding* coincide con la **Routing Key** del mensaje.</p>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <!-- Cola de Pagos -->
+                    <div class="queue p-4 shadow-lg">
+                        <h3 class="font-semibold text-xl text-amber-800" id="queue-payment-title">Cola: q.pagos</h3>
+                        <p class="text-sm text-gray-600 mb-2" id="queue-payment-binding">Binding Key: **orden.pago**</p>
+                        <div id="queue-0" class="queue-list"></div>
+                        <p class="text-sm text-gray-700 mt-2"><span id="q0-count-label">Mensajes en cola:</span> <span id="q0-count" class="font-bold">0</span></p>
+                    </div>
+                    
+                    <!-- Cola de Envíos -->
+                    <div class="queue p-4 shadow-lg">
+                        <h3 class="font-semibold text-xl text-amber-800" id="queue-shipping-title">Cola: q.envios</h3>
+                        <p class="text-sm text-gray-600 mb-2" id="queue-shipping-binding">Binding Key: **orden.envio**</p>
+                        <div id="queue-1" class="queue-list"></div>
+                        <p class="text-sm text-gray-700 mt-2"><span id="q1-count-label">Mensajes en cola:</span> <span id="q1-count" class="font-bold">0</span></p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 3. CONSUMIDORES Y COMPARACIÓN -->
+        <div class="lg:flex lg:space-x-8 mt-8">
+            
+            <!-- Consumidores -->
+            <div class="concept-box consumer lg:w-1/2 mb-8 lg:mb-0">
+                <h2 id="consumer-title" class="text-2xl font-bold text-gray-900 flex items-center mb-4">
+                    <svg class="w-6 h-6 mr-2 text-red-700" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 14v4m0 0v-4m-6 4h12"></path></svg>
+                    3. Consumidores (Microservicios)
+                </h2>
+                <p id="consumer-desc" class="text-gray-700 mb-4">Los consumidores leen y ELIMINAN el mensaje de la cola (naturaleza destructiva).</p>
+
+                <div class="grid grid-cols-2 gap-4">
+                    <!-- Consumidor Pagos -->
+                    <div id="consumer-box-0" class="p-3 bg-red-100 rounded-lg shadow-sm">
+                        <h3 class="font-semibold text-lg text-red-800" id="c0-title">Servicio de Pagos (Lee q.pagos)</h3>
+                        <div class="mt-2 text-sm"><span id="c0-message-label">Último mensaje procesado:</span> <span id="c0-message" class="font-mono bg-red-200 px-1 rounded">Ninguno</span></div>
+                        <button id="c0-button" onclick="consumeMessage(0)" class="mt-2 w-full bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg text-sm">Procesar Mensaje (q.pagos)</button>
+                    </div>
+                    <!-- Consumidor Envíos -->
+                    <div id="consumer-box-1" class="p-3 bg-red-100 rounded-lg shadow-sm">
+                        <h3 class="font-semibold text-lg text-red-800" id="c1-title">Servicio de Envíos (Lee q.envios)</h3>
+                        <div class="mt-2 text-sm"><span id="c1-message-label">Último mensaje procesado:</span> <span id="c1-message" class="font-mono bg-red-200 px-1 rounded">Ninguno</span></div>
+                        <button id="c1-button" onclick="consumeMessage(1)" class="mt-2 w-full bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg text-sm">Procesar Mensaje (q.envios)</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Comparativa -->
+            <div class="concept-box explanation lg:w-1/2">
+                <h2 id="comparison-title" class="text-2xl font-bold text-gray-900 flex items-center mb-4">
+                    <svg class="w-6 h-6 mr-2 text-indigo-700" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+                    RabbitMQ vs. Kafka: Puntos Clave
+                </h2>
+
+                <p class="font-semibold text-indigo-700 mb-2" id="comp-title-1">Modelo de Datos y Replicación</p>
+                <ul class="list-disc list-inside text-sm text-gray-700 space-y-1 ml-4">
+                    <li id="comp-li-1">**RabbitMQ:** Mensajería orientada a **Colas** (FIFO). El mensaje se elimina al ser consumido. No soporta "re-lectura" (Replay).</li>
+                    <li id="comp-li-2">**Kafka:** Orientado a **Logs/Streams Inmutables**. Los mensajes persisten tras el consumo (Retención). Ideal para *Event Sourcing* y *Replay*.</li>
+                </ul>
+
+                <p class="font-semibold text-indigo-700 mt-4 mb-2" id="comp-title-2">Enrutamiento y Consumo</p>
+                <ul class="list-disc list-inside text-sm text-gray-700 space-y-1 ml-4">
+                    <li id="comp-li-3">**RabbitMQ:** El enrutamiento es gestionado por el **Exchange** y las **Binding Keys**. El Consumidor toma el mensaje.</li>
+                    <li id="comp-li-4">**Kafka:** El Consumidor es quien elige dónde empezar a leer (**Offset**). El productor decide la Partición (por clave o round-robin).</li>
+                </ul>
+            </div>
+        </div>
+    </main>
+
+    <!-- Área para la animación del mensaje -->
+    <div id="message-anim" class="message-animation"></div>
+
+    <!-- PIE DE PÁGINA / FOOTER DE ATRIBUCIÓN -->
+    <footer class="app-footer">
+        <span id="attribution-text">Herramienta desarrollada por **Iran Lewis** de **NeuralCodeLab.com**.</span>
+    </footer>
+
+    <script>
+        // Usamos un objeto global 'RMQ' (RabbitMQ Simulator) con 'var' para encapsular las constantes
+        // y prevenir el error 'has already been declared' si el script se re-ejecuta.
+        var RMQ = RMQ || {}; 
+
+        // --- 1. CONFIGURACIÓN DE IDIOMAS (I18N) ---
+        RMQ.MESSAGES = {
+            es: {
+                // Generales
+                appTitle: "Simulador Interactivo de RabbitMQ (AMQP)",
+                headerSubtitle: "Visualiza el enrutamiento de mensajes a Colas.",
+                langLabel: "Idioma:",
+                none: "Ninguno",
+                awaiting: "Procesado",
+                
+                // Banner de Atribución
+                attributionText: "Herramienta desarrollada por **Iran Lewis** de **NeuralCodeLab.com**.",
+
+                // 1. Productor
+                producerTitle: "1. Productor",
+                producerDesc: "El productor envía un mensaje y especifica la **Routing Key**.",
+                messageInputPlaceholder: "Escribe tu mensaje...",
+                sendButton: "Enviar Mensaje (Producir)",
+                
+                // 2. Exchange / Colas
+                exchangeTitle: '2. Exchange (Tipo Direct)',
+                exchangeDesc: "El Exchange recibe el mensaje y lo enruta a la Cola cuya clave de *binding* coincide con la **Routing Key** del mensaje.",
+                queuePaymentTitle: "Cola: q.pagos",
+                queuePaymentBinding: "Binding Key: **orden.pago**",
+                queueShippingTitle: "Cola: q.envios",
+                queueShippingBinding: "Binding Key: **orden.envio**",
+                queueCountLabel: "Mensajes en cola:",
+
+                // 3. Consumidor
+                consumerTitle: "3. Consumidores (Microservicios)",
+                consumerDesc: "Los consumidores leen y ELIMINAN el mensaje de la cola (naturaleza destructiva).",
+                c0Title: "Servicio de Pagos (Lee q.pagos)",
+                c1Title: "Servicio de Envíos (Lee q.envios)",
+                lastMessageLabel: "Último mensaje procesado:",
+                consumeButton: "Procesar Mensaje (q.{queue})",
+                noNewMessages: "No hay mensajes en cola.",
+                
+                // 4. Comparativa
+                comparisonTitle: "RabbitMQ vs. Kafka: Puntos Clave",
+                compTitle1: "Modelo de Datos y Replicación",
+                compLi1: "**RabbitMQ:** Mensajería orientada a **Colas** (FIFO). El mensaje se elimina al ser consumido. No soporta 're-lectura' (Replay).",
+                compLi2: "**Kafka:** Orientado a **Logs/Streams Inmutables**. Los mensajes persisten tras el consumo (Retención). Ideal para *Event Sourcing* y *Replay*.",
+                compTitle2: "Enrutamiento y Consumo",
+                compLi3: "**RabbitMQ:** El enrutamiento es gestionado por el **Exchange** y las **Binding Keys**. El Consumidor toma el mensaje.",
+                compLi4: "**Kafka:** El Consumidor es quien elige dónde empezar a leer (**Offset**). El productor decide la Partición (por clave o round-robin).",
+                
+                // Console Log
+                logNoMessages: "Consumidor {id}: La cola {qId} está vacía. No hay mensajes nuevos.",
+                logPostConsume: "*** PROCESAMIENTO: El Consumidor {id} ha procesado el evento \"{text}\" y ha ELIMINADO el mensaje de la cola {qId}."
+            },
+            en: {
+                // Generals
+                appTitle: "Interactive RabbitMQ Simulator (AMQP)",
+                headerSubtitle: "Visualize message routing to Queues.",
+                langLabel: "Language:",
+                none: "None",
+                awaiting: "Processed",
+                
+                // Attribution Banner
+                attributionText: "Tool developed by **Iran Lewis** from **NeuralCodeLab.com**.",
+
+                // 1. Producer
+                producerTitle: "1. Producer",
+                producerDesc: "The producer sends a message and specifies the **Routing Key**.",
+                messageInputPlaceholder: "Type your message...",
+                sendButton: "Send Message (Produce)",
+                
+                // 2. Exchange / Queues
+                exchangeTitle: '2. Exchange (Direct Type)',
+                exchangeDesc: "The Exchange receives the message and routes it to the Queue whose *binding* key matches the message's **Routing Key**.",
+                queuePaymentTitle: "Queue: q.payments",
+                queuePaymentBinding: "Binding Key: **orden.pago**",
+                queueShippingTitle: "Queue: q.shipping",
+                queueShippingBinding: "Binding Key: **orden.envio**",
+                queueCountLabel: "Messages in queue:",
+
+                // 3. Consumer
+                consumerTitle: "3. Consumers (Microservices)",
+                consumerDesc: "Consumers read and DELETE the message from the queue (destructive nature).",
+                c0Title: "Payments Service (Reads q.payments)",
+                c1Title: "Shipping Service (Reads q.shipping)",
+                lastMessageLabel: "Last processed message:",
+                consumeButton: "Process Message (q.{queue})",
+                noNewMessages: "No messages in queue.",
+                
+                // 4. Comparison
+                comparisonTitle: "RabbitMQ vs. Kafka: Key Points",
+                compTitle1: "Data Model and Replication",
+                compLi1: "**RabbitMQ:** **Queue** (FIFO) oriented messaging. The message is deleted upon consumption. It does not support 're-reading' (Replay).",
+                compLi2: "**Kafka:** **Immutable Log/Stream** oriented. Messages persist after consumption (Retention). Ideal for *Event Sourcing* and *Replay*.",
+                compTitle2: "Routing and Consumption",
+                compLi3: "**RabbitMQ:** Routing is managed by the **Exchange** and **Binding Keys**. The Consumer takes the message.",
+                compLi4: "**Kafka:** The Consumer chooses where to start reading (**Offset**). The producer decides the Partition (by key or round-robin).",
+                
+                // Console Log
+                logNoMessages: "Consumer {id}: Queue {qId} is empty. No new messages.",
+                logPostConsume: "*** PROCESSING: Consumer {id} has processed the event \"{text}\" and has DELETED the message from queue {qId}."
+            },
+            pt: {
+                // Generals
+                appTitle: "Simulador Interativo RabbitMQ (AMQP)",
+                headerSubtitle: "Visualize o roteamento de mensagens para Filas.",
+                langLabel: "Idioma:",
+                none: "Nenhum",
+                awaiting: "Processado",
+                
+                // Attribution Banner
+                attributionText: "Ferramenta desenvolvida por **Iran Lewis** da **NeuralCodeLab.com**.",
+
+                // 1. Produtor
+                producerTitle: "1. Produtor",
+                producerDesc: "O produtor envia uma mensagem e especifica a **Routing Key**.",
+                messageInputPlaceholder: "Digite sua mensagem...",
+                sendButton: "Enviar Mensagem (Produzir)",
+                
+                // 2. Exchange / Queues
+                exchangeTitle: '2. Exchange (Tipo Direct)',
+                exchangeDesc: "O Exchange recebe a mensagem e a roteia para a Fila cuja chave de *binding* corresponde à **Routing Key** da mensagem.",
+                queuePaymentTitle: "Fila: q.pagamentos",
+                queuePaymentBinding: "Binding Key: **orden.pago**",
+                queueShippingTitle: "Fila: q.envios",
+                queueShippingBinding: "Binding Key: **orden.envio**",
+                queueCountLabel: "Mensagens na fila:",
+
+                // 3. Consumidor
+                consumerTitle: "3. Consumidores (Microsserviços)",
+                consumerDesc: "Os consumidores leem e EXCLUEM a mensagem da fila (natureza destrutiva).",
+                c0Title: "Serviço de Pagamentos (Lê q.pagamentos)",
+                c1Title: "Serviço de Envio (Lê q.envios)",
+                lastMessageLabel: "Última mensagem processada:",
+                consumeButton: "Processar Mensagem (q.{queue})",
+                noNewMessages: "Nenhuma mensagem na fila.",
+                
+                // 4. Comparativa
+                comparisonTitle: "RabbitMQ vs. Kafka: Pontos Chave",
+                compTitle1: "Modelo de Dados e Replicação",
+                compLi1: "**RabbitMQ:** Mensageria orientada a **Filas** (FIFO). A mensagem é excluída após o consumo. Não suporta 're-leitura' (Replay).",
+                compLi2: "**Kafka:** Orientado a **Logs/Streams Imutáveis**. As mensagens persistem após o consumo (Retenção). Ideal para *Event Sourcing* e *Replay*.",
+                compTitle2: "Roteamento e Consumo",
+                compLi3: "**RabbitMQ:** O roteamento é gerenciado pelo **Exchange** e **Binding Keys**. O Consumidor pega a mensagem.",
+                compLi4: "**Kafka:** O Consumidor escolhe onde começar a ler (**Offset**). O produtor decide a Partição (por chave ou round-robin).",
+                
+                // Console Log
+                logNoMessages: "Consumidor {id}: A fila {qId} está vazia. Nenhuma mensagem nova.",
+                logPostConsume: "*** PROCESSAMENTO: O Consumidor {id} processou o evento \"{text}\" e EXCLUIU a mensagem da fila {qId}."
+            }
+        };
+        RMQ.currentLang = 'es'; // Default language
+
+        // --- 2. LÓGICA DE RABBITMQ SIMULADA ---
+        // 0: q.pagos (Binding: orden.pago), 1: q.envios (Binding: orden.envio)
+        RMQ.QUEUE_LOGS = Array.from({ length: 2 }, () => []); // Array de arrays (logs de colas)
+        RMQ.QUEUE_BINDINGS = ['orden.pago', 'orden.envio'];
+
+        // Referencias del DOM
+        const messageInput = document.getElementById('message-input');
+        const routingKeySelect = document.getElementById('routing-key-select');
+        const messageAnim = document.getElementById('message-anim');
+        const producerBox = document.getElementById('producer-box');
+        const exchangeBox = document.getElementById('exchange-box');
+        const queueElements = [
+            document.getElementById('queue-0'),
+            document.getElementById('queue-1'),
+        ];
+        const queueCountDisplays = [
+            document.getElementById('q0-count'),
+            document.getElementById('q1-count'),
+        ];
+        const consumerBoxes = [
+            document.getElementById('consumer-box-0'), // Contenedor del Servicio de Pagos
+            document.getElementById('consumer-box-1'), // Contenedor del Servicio de Envíos
+        ];
+        const consumerMessageDisplays = [
+            document.getElementById('c0-message'),
+            document.getElementById('c1-message'),
+        ];
+        const attributionBannerText = document.getElementById('attribution-text');
+
+
+        /**
+         * Función I18N
+         */
+        function getMsg(key, replacements = {}) {
+            let message = RMQ.MESSAGES[RMQ.currentLang][key] || RMQ.MESSAGES['es'][key] || key;
+            for (const [placeholder, value] of Object.entries(replacements)) {
+                message = message.replace(`{${placeholder}}`, value);
+            }
+            return message;
+        }
+        
+        // Función para cambiar el idioma y actualizar la interfaz
+        function setLanguage(lang) {
+            RMQ.currentLang = lang;
+            
+            // Actualizar Title y Metadata
+            document.getElementById('app-title').textContent = getMsg('appTitle');
+            document.querySelector('meta[name="description"]').setAttribute('content', getMsg('headerSubtitle'));
+            document.documentElement.lang = lang;
+            
+            // 1. Header & Footer
+            document.getElementById('header-title').textContent = getMsg('appTitle');
+            document.getElementById('header-subtitle').textContent = getMsg('headerSubtitle');
+            document.getElementById('lang-label').textContent = getMsg('langLabel');
+            attributionBannerText.innerHTML = getMsg('attributionText');
+
+            // 2. Productor
+            document.getElementById('producer-title').innerHTML = `<svg class="w-6 h-6 mr-2 text-green-700" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c1.657 0 3 .895 3 2s-1.343 2-3 2-3 .895-3 2 1.343 2 3 2m-3-2v4m-2-4h4m-2 4h4m-1.5 6h-3M12 6V4"></path></svg>${getMsg('producerTitle')}`;
+            document.getElementById('producer-desc').textContent = getMsg('producerDesc');
+            document.getElementById('message-input').placeholder = getMsg('messageInputPlaceholder');
+            document.getElementById('send-button').textContent = getMsg('sendButton');
+
+            // 3. Exchange / Colas
+            document.getElementById('exchange-title').innerHTML = `<svg class="w-6 h-6 mr-2 text-blue-800" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>${getMsg('exchangeTitle')}`;
+            document.getElementById('exchange-desc').textContent = getMsg('exchangeDesc');
+            
+            document.getElementById('queue-payment-title').textContent = getMsg('queuePaymentTitle');
+            document.getElementById('queue-payment-binding').innerHTML = getMsg('queuePaymentBinding');
+            document.getElementById('queue-shipping-title').textContent = getMsg('queueShippingTitle');
+            document.getElementById('queue-shipping-binding').innerHTML = getMsg('queueShippingBinding');
+            document.getElementById('q0-count-label').textContent = getMsg('queueCountLabel');
+            document.getElementById('q1-count-label').textContent = getMsg('queueCountLabel');
+            
+            // 4. Consumidor
+            document.getElementById('consumer-title').innerHTML = `<svg class="w-6 h-6 mr-2 text-red-700" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 14v4m0 0v-4m-6 4h12"></path></svg>${getMsg('consumerTitle')}`;
+            document.getElementById('consumer-desc').textContent = getMsg('consumerDesc');
+            
+            document.getElementById('c0-title').textContent = getMsg('c0Title');
+            document.getElementById('c1-title').textContent = getMsg('c1Title');
+            document.getElementById('c0-message-label').textContent = getMsg('lastMessageLabel');
+            document.getElementById('c1-message-label').textContent = getMsg('lastMessageLabel');
+            document.getElementById('c0-button').textContent = getMsg('consumeButton', {queue: 'pagos'});
+            document.getElementById('c1-button').textContent = getMsg('consumeButton', {queue: 'envios'});
+
+            // 5. Comparativa
+            document.getElementById('comparison-title').innerHTML = `<svg class="w-6 h-6 mr-2 text-indigo-700" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>${getMsg('comparisonTitle')}`;
+            document.getElementById('comp-title-1').textContent = getMsg('compTitle1');
+            document.getElementById('comp-li-1').innerHTML = getMsg('compLi1');
+            document.getElementById('comp-li-2').innerHTML = getMsg('compLi2');
+            document.getElementById('comp-title-2').textContent = getMsg('compTitle2');
+            document.getElementById('comp-li-3').innerHTML = getMsg('compLi3');
+            document.getElementById('comp-li-4').innerHTML = getMsg('compLi4');
+
+            // Actualizar mensajes en el DOM
+            document.getElementById('c0-message').textContent = consumerMessageDisplays[0].dataset.lastMessage || getMsg('none');
+            document.getElementById('c1-message').textContent = consumerMessageDisplays[1].dataset.lastMessage || getMsg('none');
+
+            renderQueues();
+        }
+
+        // --- 2. LÓGICA DE RABBITMQ SIMULADA ---
+        // 0: q.pagos (Binding: orden.pago), 1: q.envios (Binding: orden.envio)
+        // Ya definidas en RMQ.QUEUE_LOGS y RMQ.QUEUE_BINDINGS
+
+        // Referencias del DOM
+        // Nota: Las referencias del DOM no necesitan el prefijo RMQ porque se usan con 'const' en este scope.
+        
+        /**
+         * Calcula las coordenadas de un elemento del DOM.
+         * @param {HTMLElement} element
+         */
+        function getElementCoords(element) {
+            const rect = element.getBoundingClientRect();
+            return {
+                x: rect.left + window.scrollX + rect.width / 2,
+                y: rect.top + window.scrollY + rect.height / 2
+            };
+        }
+
+        /**
+         * Renderiza el estado actual de todas las colas.
+         */
+        function renderQueues() {
+            RMQ.QUEUE_LOGS.forEach((log, index) => {
+                const queueDiv = queueElements[index];
+                queueDiv.innerHTML = '';
+                // FIFO: el primer elemento del array (el más antiguo) está al final del DOM
+                log.forEach((msg, idx) => {
+                    const item = document.createElement('div');
+                    // Usamos idx para asignar IDs únicos, aunque solo se usa el último elemento
+                    item.id = `msg-${index}-${msg.id}`;
+                    item.className = 'message-item';
+                    item.textContent = msg.text;
+                    queueDiv.appendChild(item); // Se añade al final (visualmente abajo en CSS: flex-direction: column-reverse)
+                });
+                queueCountDisplays[index].textContent = log.length;
+            });
+        }
+
+        /**
+         * Simula el envío de un mensaje por el Productor.
+         */
+        async function sendMessage() {
+            const messageText = messageInput.value.trim();
+            const routingKey = routingKeySelect.value;
+            if (!messageText) {
+                messageInput.placeholder = getMsg('messageInputPlaceholder');
+                messageInput.focus();
+                return;
+            }
+
+            // 1. Lógica de Routing: Determinar la cola de destino
+            const targetQueueIndex = RMQ.QUEUE_BINDINGS.indexOf(routingKey);
+            if (targetQueueIndex === -1) {
+                console.error(`Error: Routing Key "${routingKey}" no tiene cola asociada (Exchange no pudo enrutar).`);
+                return; 
+            }
+
+            const messagePayload = { id: Date.now(), text: messageText };
+            messageInput.value = ''; // Limpiar input
+
+            const sendButton = document.getElementById('send-button');
+            sendButton.disabled = true;
+
+            // 2. Animación de Producción: Productor -> Exchange
+            const producerCoords = getElementCoords(producerBox);
+            const exchangeCoords = getElementCoords(exchangeBox);
+            
+            messageAnim.textContent = 'Msg';
+            messageAnim.style.opacity = 1;
+            messageAnim.style.left = `${producerCoords.x - 15}px`;
+            messageAnim.style.top = `${producerCoords.y - 15}px`;
+
+            await new Promise(resolve => {
+                setTimeout(() => {
+                    messageAnim.style.left = `${exchangeCoords.x - 15}px`;
+                    messageAnim.style.top = `${exchangeCoords.y - 15}px`;
+                    resolve();
+                }, 300);
+            });
+
+            // 3. Animación de Routing: Exchange -> Cola Específica
+            const targetQueueEl = queueElements[targetQueueIndex].parentNode; // El div padre de la lista
+            const targetCoords = getElementCoords(targetQueueEl);
+
+            await new Promise(resolve => {
+                setTimeout(() => {
+                    messageAnim.style.left = `${targetCoords.x - 15}px`;
+                    messageAnim.style.top = `${targetCoords.y - 15}px`;
+                    resolve();
+                }, 300);
+            });
+
+            // 4. Almacenamiento en la Cola (FIFO)
+            setTimeout(() => {
+                RMQ.QUEUE_LOGS[targetQueueIndex].push(messagePayload); // Agregar al final
+                renderQueues();
+                messageAnim.style.opacity = 0; // Ocultar animación
+                sendButton.disabled = false;
+            }, 300);
+
+            console.log(`Mensaje "${messageText}" enviado con RK: ${routingKey} a Cola ${targetQueueIndex}`);
+        }
+
+        /**
+         * Simula el consumo de un mensaje por un Consumidor.
+         * @param {number} consumerId - Índice del consumidor (0: pagos, 1: envios)
+         */
+        async function consumeMessage(consumerId) {
+            const queueId = consumerId; // El ID del consumidor coincide con el ID de la cola
+            const queueLog = RMQ.QUEUE_LOGS[queueId];
+            const queueName = RMQ.QUEUE_BINDINGS[queueId];
+            const consumeButton = consumerBoxes[consumerId].querySelector('button');
+            consumeButton.disabled = true;
+
+            if (queueLog.length === 0) {
+                console.log(getMsg('logNoMessages', {id: consumerId, qId: queueName}));
+                consumerMessageDisplays[consumerId].textContent = getMsg('noNewMessages');
+                consumeButton.disabled = false;
+                return;
+            }
+
+            // 1. Lógica FIFO: El primer mensaje (el más antiguo) está en la posición 0 del array
+            const messagePayload = queueLog[0]; 
+
+            // 2. Animación de Consumo: Cola -> Consumidor
+            const queueDiv = queueElements[queueId];
+            const messageItem = queueDiv.lastChild; // El primer mensaje del array es el último en el DOM (abajo)
+
+            if (!messageItem) {
+                 // Esto no debería pasar si el queueLog.length > 0, pero es una guardia
+                 consumeButton.disabled = false;
+                 return;
+            }
+
+            const messageItemRect = messageItem.getBoundingClientRect();
+            const messageItemCoords = {
+                x: messageItemRect.left + window.scrollX + messageItemRect.width / 2,
+                y: messageItemRect.top + window.scrollY + messageItemRect.height / 2
+            };
+            const consumerCoords = getElementCoords(consumerBoxes[consumerId]);
+
+            // Crear y mover bloque de animación
+            messageAnim.textContent = 'Proceso';
+            messageAnim.style.opacity = 1;
+            messageAnim.style.left = `${messageItemCoords.x - 15}px`;
+            messageAnim.style.top = `${messageItemCoords.y - 15}px`;
+
+            // Ocultar el mensaje de la cola inmediatamente (simulando que el consumidor lo tomó)
+            messageItem.style.opacity = 0;
+
+            // Mover al Consumidor
+            await new Promise(resolve => {
+                setTimeout(() => {
+                    messageAnim.style.left = `${consumerCoords.x - 15}px`;
+                    messageAnim.style.top = `${consumerCoords.y - 15}px`;
+                    resolve();
+                }, 300);
+            });
+
+            // 3. Lógica Destructiva: ELIMINAR el mensaje de la cola
+            setTimeout(() => {
+                // Sacar el mensaje más antiguo (FIFO)
+                queueLog.shift(); 
+                
+                // *** PROCESAMIENTO POST-CONSUMO (simulado) ***
+                console.log(getMsg('logPostConsume', {id: consumerId, text: messagePayload.text, qId: queueName}));
+                
+                // Actualizar la interfaz del Consumidor
+                consumerMessageDisplays[consumerId].dataset.lastMessage = messagePayload.text;
+                consumerMessageDisplays[consumerId].textContent = messagePayload.text;
+                
+                // Renderizar para eliminar visualmente el elemento
+                renderQueues();
+                
+                // Finalizar animación
+                messageAnim.style.opacity = 0;
+                consumeButton.disabled = false;
+            }, 300);
+        }
+
+        /**
+         * Determina el idioma inicial basado en la configuración del navegador.
+         */
+        function initializeLanguage() {
+            const browserLang = navigator.language.split('-')[0].toLowerCase();
+            const supportedLangs = ['es', 'en', 'pt'];
+            const initialLang = supportedLangs.includes(browserLang) ? browserLang : 'es';
+            
+            document.getElementById('language-select').value = initialLang;
+            setLanguage(initialLang);
+        }
+
+        // Inicializar la interfaz al cargar
+        window.onload = initializeLanguage;
+    </script>
+</body>
+</html>
